@@ -2,18 +2,25 @@ package com.hwiseo.flow.service;
 
 import com.hwiseo.flow.Exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.log4j.Log4j2;
+import org.springframework.data.redis.connection.zset.Tuple;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
+import reactor.util.function.Tuples;
 
 import java.time.Instant;
 
+@Log4j2
 @Service
 @RequiredArgsConstructor
 public class UserQueueService {
 
     private final ReactiveRedisTemplate<String, String> reactiveRedisTemplate;
     private final String USER_QUEUE_WAIT_KEY = "users:queue:%s:wait";
+    private final String USER_QUEUE_WAIT_KEY_FOR_SCAN = "users:queue:*:wait";
     private final String USER_QUEUE_PROCEED_KEY = "users:queue:%s:proceed";
 
     public Mono<Long> registerWaitQueue(final String queue, final Long userId) {
@@ -40,5 +47,27 @@ public class UserQueueService {
         return reactiveRedisTemplate.opsForZSet().rank(USER_QUEUE_PROCEED_KEY.formatted(queue), userId.toString())
                 .defaultIfEmpty(-1L)
                 .map(rank -> rank >= 0);
+    }
+
+    public Mono<Long> getRank(final String queue, final Long userId) {
+        return reactiveRedisTemplate.opsForZSet().rank(USER_QUEUE_WAIT_KEY.formatted(queue), userId.toString())
+                .defaultIfEmpty(-1L)
+                .map(rank -> rank >= 0 ? rank + 1 : rank);
+    }
+
+    @Scheduled(initialDelay = 5000, fixedDelay = 3000)
+    public void scheduleAllowUser() {
+        log.info("scheduled...");
+
+        var maxAllowUserCount = 3L;
+
+        reactiveRedisTemplate.scan(ScanOptions.scanOptions()
+                    .match(USER_QUEUE_WAIT_KEY_FOR_SCAN)
+                    .count(100)
+                    .build())
+                .map(key -> key.split(":")[2])
+                .flatMap(queue -> allowUser(queue, maxAllowUserCount))
+                .doOnNext(allowed -> log.info("Tried %d and allowed %d members of queue".formatted(maxAllowUserCount, allowed)))
+                .subscribe();
     }
 }

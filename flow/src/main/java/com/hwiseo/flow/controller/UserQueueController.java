@@ -2,6 +2,7 @@ package com.hwiseo.flow.controller;
 
 import com.hwiseo.flow.dto.AllowUserResponse;
 import com.hwiseo.flow.dto.AllowedUserResponse;
+import com.hwiseo.flow.dto.RankNumberResponse;
 import com.hwiseo.flow.dto.RegisterUserResponse;
 import com.hwiseo.flow.service.UserQueueService;
 import lombok.RequiredArgsConstructor;
@@ -32,4 +33,11 @@ public class UserQueueController {
         return userQueueService.isAllowed(queue, userId)
                 .map(AllowedUserResponse::new);
     }
+
+    @GetMapping("/rank")
+    public Mono<RankNumberResponse> getRank(@RequestParam(name = "queue", defaultValue = "default") String queue, @RequestParam(name = "user_id") Long userId) {
+        return userQueueService.getRank(queue, userId)
+                .map(RankNumberResponse::new);
+    }
+
 }
